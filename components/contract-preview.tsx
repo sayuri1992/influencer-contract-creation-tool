@@ -363,7 +363,7 @@ export const ContractPreview = forwardRef<HTMLDivElement, ContractPreviewProps>(
                   paddingBottom: "2px",
                 }}
               >
-                {data.recipientName}
+                {/* 氏名は表示しない */}
               </div>
               <span className="ml-4">印</span>
             </div>

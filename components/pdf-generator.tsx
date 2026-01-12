@@ -29,12 +29,14 @@ export function PdfGenerator({ data }: PdfGeneratorProps) {
     try {
       // プレビュー要素をキャプチャ
       const canvas = await html2canvas(previewElement, {
-        scale: 2, // 高解像度のため
+        scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
         width: previewElement.scrollWidth,
         height: previewElement.scrollHeight,
+        windowWidth: previewElement.scrollWidth,
+        windowHeight: previewElement.scrollHeight,
       })
 
       // PDFサイズ: 420mm x 297mm (A3横)
@@ -44,10 +46,11 @@ export function PdfGenerator({ data }: PdfGeneratorProps) {
         orientation: "landscape",
         unit: "mm",
         format: [pdfWidth, pdfHeight],
+        compress: true,
       })
 
       // キャンバスの画像をPDFに追加
-      const imgData = canvas.toDataURL("image/png")
+      const imgData = canvas.toDataURL("image/png", 1.0)
       const imgWidth = pdfWidth
       const imgHeight = (canvas.height * pdfWidth) / canvas.width
 
@@ -55,28 +58,71 @@ export function PdfGenerator({ data }: PdfGeneratorProps) {
       let heightLeft = imgHeight
       let position = 0
 
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST")
       heightLeft -= pdfHeight
 
       while (heightLeft > 0) {
         position = heightLeft - imgHeight
         pdf.addPage()
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight)
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST")
         heightLeft -= pdfHeight
       }
 
-      // ファイル名を生成（日付と受託者名から）
+      // ファイル名を生成（日付から）
       const dateStr = data.createdDate
         ? new Date(data.createdDate).toISOString().split("T")[0]
         : new Date().toISOString().split("T")[0]
-      const recipientStr = data.recipientName || "業務委託書"
-      const fileName = `業務委託書_${recipientStr}_${dateStr}.pdf`
+      const fileName = `業務委託書_${dateStr}.pdf`
 
-      // PDFをダウンロード
-      pdf.save(fileName)
+      // Blob URLを使用してダウンロード（より堅牢）
+      const pdfBlob = pdf.output("blob")
+      const url = URL.createObjectURL(pdfBlob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
     } catch (error) {
       console.error("PDF生成エラー:", error)
-      alert("PDFの生成に失敗しました。もう一度お試しください。")
+      // フォールバック: ブラウザの印刷機能を使用
+      try {
+        const printWindow = window.open("", "_blank")
+        if (printWindow) {
+          printWindow.document.write(`
+            <!DOCTYPE html>
+            <html lang="ja">
+            <head>
+              <meta charset="UTF-8">
+              <title>業務委託書</title>
+              <style>
+                @page {
+                  size: 420mm 297mm landscape;
+                  margin: 0;
+                }
+                body {
+                  margin: 0;
+                  padding: 0;
+                }
+              </style>
+            </head>
+            <body>
+              ${previewElement.innerHTML}
+            </body>
+            </html>
+          `)
+          printWindow.document.close()
+          setTimeout(() => {
+            printWindow.print()
+          }, 250)
+        } else {
+          alert("ポップアップがブロックされました。ポップアップを許可してください。")
+        }
+      } catch (fallbackError) {
+        console.error("フォールバックエラー:", fallbackError)
+        alert("PDFの生成に失敗しました。ブラウザの印刷機能を使用してください。")
+      }
     } finally {
       setIsGenerating(false)
     }

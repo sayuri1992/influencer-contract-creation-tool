@@ -5,10 +5,77 @@ import { type ContractData, defaultContractData } from "@/lib/contract-types"
 import { ContractForm } from "@/components/contract-form"
 import { PdfGenerator } from "@/components/pdf-generator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileText, Eye, PenLine } from "lucide-react"
+import { FileText, Eye, PenLine, Lock } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+
+const LOGIN_ID = "off"
+const LOGIN_PASSWORD = "S5kjNi6x"
 
 export default function HomePage() {
   const [contractData, setContractData] = useState<ContractData>(defaultContractData)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [loginId, setLoginId] = useState("")
+  const [loginPassword, setLoginPassword] = useState("")
+  const [loginError, setLoginError] = useState("")
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoginError("")
+
+    if (loginId === LOGIN_ID && loginPassword === LOGIN_PASSWORD) {
+      setIsAuthenticated(true)
+    } else {
+      setLoginError("IDまたはパスワードが正しくありません。")
+    }
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="h-5 w-5" />
+              ログイン
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="loginId">ID</Label>
+                <Input
+                  id="loginId"
+                  type="text"
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="loginPassword">パスワード</Label>
+                <Input
+                  id="loginPassword"
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  required
+                />
+              </div>
+              {loginError && (
+                <p className="text-sm text-destructive">{loginError}</p>
+              )}
+              <Button type="submit" className="w-full">
+                ログイン
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
