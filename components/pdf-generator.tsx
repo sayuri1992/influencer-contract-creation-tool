@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Download, ZoomIn, X } from "lucide-react"
 import { useRef, useState } from "react"
 import { ContractPreview } from "./contract-preview"
-import html2canvas from "html2canvas"
+import { toCanvas } from "html-to-image"
 import jsPDF from "jspdf"
 
 interface PdfGeneratorProps {
@@ -18,111 +18,218 @@ export function PdfGenerator({ data }: PdfGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false)
 
   const handleDownload = async () => {
-    const previewElement = previewRef.current
-    if (!previewElement) {
-      alert("プレビューが見つかりません。")
-      return
-    }
-
-    setIsGenerating(true)
-
     try {
-      // プレビュー要素をキャプチャ
-      const canvas = await html2canvas(previewElement, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff",
-        width: previewElement.scrollWidth,
-        height: previewElement.scrollHeight,
-        windowWidth: previewElement.scrollWidth,
-        windowHeight: previewElement.scrollHeight,
-      })
-
-      // PDFサイズ: 420mm x 297mm (A3横)
-      const pdfWidth = 420 // mm
-      const pdfHeight = 297 // mm
-      const pdf = new jsPDF({
-        orientation: "landscape",
-        unit: "mm",
-        format: [pdfWidth, pdfHeight],
-        compress: true,
-      })
-
-      // キャンバスの画像をPDFに追加
-      const imgData = canvas.toDataURL("image/png", 1.0)
-      const imgWidth = pdfWidth
-      const imgHeight = (canvas.height * pdfWidth) / canvas.width
-
-      // 画像がPDFの高さを超える場合は複数ページに分割
-      let heightLeft = imgHeight
-      let position = 0
-
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST")
-      heightLeft -= pdfHeight
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight
-        pdf.addPage()
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST")
-        heightLeft -= pdfHeight
+      console.log("[STEP 1] PDF生成開始: プレビュー要素の取得")
+      const previewElement = previewRef.current
+      if (!previewElement) {
+        console.error("[ERROR] プレビュー要素が見つかりません")
+        alert("プレビューが見つかりません。ページを再読み込みしてください。")
+        return
       }
+      console.log("[STEP 1] 成功: プレビュー要素を取得")
 
-      // ファイル名を生成（日付から）
-      const dateStr = data.createdDate
-        ? new Date(data.createdDate).toISOString().split("T")[0]
-        : new Date().toISOString().split("T")[0]
-      const fileName = `業務委託書_${dateStr}.pdf`
+      setIsGenerating(true)
 
-      // Blob URLを使用してダウンロード（より堅牢）
-      const pdfBlob = pdf.output("blob")
-      const url = URL.createObjectURL(pdfBlob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error("PDF生成エラー:", error)
-      // フォールバック: ブラウザの印刷機能を使用
+      // 非表示要素を一時的に表示状態にする
+      console.log("[STEP 2] プレビュー要素を一時的に表示状態に変更")
+      const originalStyles = {
+        position: previewElement.style.position,
+        left: previewElement.style.left,
+        top: previewElement.style.top,
+        opacity: previewElement.style.opacity,
+        pointerEvents: previewElement.style.pointerEvents,
+        visibility: previewElement.style.visibility,
+      }
+      
+      // 要素を画面外だが表示可能な状態にする
+      previewElement.style.position = "absolute"
+      previewElement.style.left = "0"
+      previewElement.style.top = "0"
+      previewElement.style.opacity = "1"
+      previewElement.style.pointerEvents = "auto"
+      previewElement.style.visibility = "visible"
+      previewElement.style.zIndex = "9999"
+      
+      // 少し待ってレンダリングを完了させる
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      console.log("[STEP 2] 成功: 要素を表示状態に変更")
+
       try {
-        const printWindow = window.open("", "_blank")
-        if (printWindow) {
-          printWindow.document.write(`
-            <!DOCTYPE html>
-            <html lang="ja">
-            <head>
-              <meta charset="UTF-8">
-              <title>業務委託書</title>
-              <style>
-                @page {
-                  size: 420mm 297mm landscape;
-                  margin: 0;
-                }
-                body {
-                  margin: 0;
-                  padding: 0;
-                }
-              </style>
-            </head>
-            <body>
-              ${previewElement.innerHTML}
-            </body>
-            </html>
-          `)
-          printWindow.document.close()
-          setTimeout(() => {
-            printWindow.print()
-          }, 250)
+        console.log("[STEP 3] html-to-imageでキャプチャ開始")
+        console.log("[STEP 3] 要素サイズ:", {
+          width: previewElement.offsetWidth,
+          height: previewElement.offsetHeight,
+          scrollWidth: previewElement.scrollWidth,
+          scrollHeight: previewElement.scrollHeight,
+        })
+
+        // プレビュー要素をCanvasに変換（html-to-imageを使用）
+        const canvas = await toCanvas(previewElement, {
+          pixelRatio: 2,
+          backgroundColor: "#ffffff",
+          cacheBust: true,
+          quality: 1.0,
+        })
+
+        console.log("[STEP 3] 成功: キャンバスサイズ:", canvas.width, "x", canvas.height, "px")
+
+        // 元のスタイルを復元
+        console.log("[STEP 4] 元のスタイルに復元")
+        Object.keys(originalStyles).forEach((key) => {
+          ;(previewElement.style as any)[key] = (originalStyles as any)[key] || ""
+        })
+        console.log("[STEP 4] 成功: スタイルを復元")
+
+        // PDFサイズ: 420mm x 297mm (A3横)
+        const pdfWidth = 420 // mm
+        const pdfHeight = 297 // mm
+        console.log("[STEP 5] PDFサイズ:", pdfWidth, "mm x", pdfHeight, "mm (A3横)")
+
+        // jsPDFのインスタンスを作成
+        console.log("[STEP 6] jsPDFインスタンスの作成")
+        const pdf = new jsPDF({
+          orientation: "landscape",
+          unit: "mm",
+          format: [pdfWidth, pdfHeight],
+          compress: true,
+        })
+        console.log("[STEP 6] 成功: jsPDFインスタンス作成")
+
+        // キャンバスを画像データに変換
+        console.log("[STEP 7] 画像データの変換")
+        const imgData = canvas.toDataURL("image/png", 1.0)
+        console.log("[STEP 7] 成功: 画像データサイズ:", imgData.length, "文字")
+
+        // 画像のアスペクト比を計算
+        const canvasAspectRatio = canvas.width / canvas.height
+        const pdfAspectRatio = pdfWidth / pdfHeight
+
+        // PDFサイズに合わせて画像をスケーリング
+        let imgWidth = pdfWidth
+        let imgHeight = pdfHeight
+
+        if (canvasAspectRatio > pdfAspectRatio) {
+          // キャンバスが横長の場合
+          imgHeight = pdfWidth / canvasAspectRatio
+          if (imgHeight > pdfHeight) {
+            imgWidth = pdfHeight * canvasAspectRatio
+            imgHeight = pdfHeight
+          }
         } else {
-          alert("ポップアップがブロックされました。ポップアップを許可してください。")
+          // キャンバスが縦長の場合
+          imgWidth = pdfHeight * canvasAspectRatio
+          if (imgWidth > pdfWidth) {
+            imgWidth = pdfWidth
+            imgHeight = pdfWidth / canvasAspectRatio
+          }
         }
-      } catch (fallbackError) {
-        console.error("フォールバックエラー:", fallbackError)
-        alert("PDFの生成に失敗しました。ブラウザの印刷機能を使用してください。")
+
+        // 画像がPDFサイズを超える場合はPDFサイズに収める
+        if (imgWidth > pdfWidth) {
+          imgWidth = pdfWidth
+          imgHeight = pdfWidth / canvasAspectRatio
+        }
+        if (imgHeight > pdfHeight) {
+          imgHeight = pdfHeight
+          imgWidth = pdfHeight * canvasAspectRatio
+        }
+
+        console.log("[STEP 8] 画像サイズ:", imgWidth.toFixed(2), "mm x", imgHeight.toFixed(2), "mm")
+
+        // 画像を中央に配置して追加
+        console.log("[STEP 9] 画像をPDFに追加")
+        const xOffset = (pdfWidth - imgWidth) / 2
+        const yOffset = (pdfHeight - imgHeight) / 2
+        pdf.addImage(imgData, "PNG", xOffset, yOffset, imgWidth, imgHeight, undefined, "FAST")
+        console.log("[STEP 9] 成功: 画像を追加")
+
+        // ファイル名
+        const fileName = "業務委託書.pdf"
+        console.log("[STEP 10] PDF Blobの生成, ファイル名:", fileName)
+
+        // Blob URLを使用して強制的にダウンロード
+        const pdfBlob = pdf.output("blob")
+        console.log("[STEP 10] 成功: PDF Blobサイズ:", pdfBlob.size, "bytes")
+
+        // Blob URLを作成
+        console.log("[STEP 11] Blob URLの作成")
+        const url = URL.createObjectURL(pdfBlob)
+        console.log("[STEP 11] 成功: Blob URL作成")
+
+        // ダウンロード用のリンク要素を作成
+        console.log("[STEP 12] ダウンロードリンクの作成")
+        const link = document.createElement("a")
+        link.href = url
+        link.download = fileName
+        link.style.display = "none"
+
+        // download属性を確実に設定
+        link.setAttribute("download", fileName)
+
+        // DOMに追加
+        document.body.appendChild(link)
+        console.log("[STEP 12] 成功: リンク要素をDOMに追加")
+
+        // クリックイベントを発火
+        console.log("[STEP 13] クリックイベント発火")
+        link.click()
+        console.log("[STEP 13] 成功: クリックイベント発火")
+
+        // クリーンアップ
+        setTimeout(() => {
+          try {
+            document.body.removeChild(link)
+            URL.revokeObjectURL(url)
+            console.log("[STEP 14] クリーンアップ完了: ダウンロード成功")
+          } catch (cleanupError) {
+            console.warn("[WARNING] クリーンアップエラー（無視可能）:", cleanupError)
+          }
+        }, 300)
+
+      } catch (canvasError) {
+        // 元のスタイルを復元（エラー時も確実に）
+        console.error("[ERROR] キャンバス生成エラー: スタイルを復元")
+        Object.keys(originalStyles).forEach((key) => {
+          ;(previewElement.style as any)[key] = (originalStyles as any)[key] || ""
+        })
+        throw canvasError
       }
+
+    } catch (error) {
+      // 詳細なエラーログを出力
+      console.error("=== PDF生成エラー（詳細） ===")
+      console.error("エラー発生時刻:", new Date().toISOString())
+      console.error("エラータイプ:", typeof error)
+      console.error("エラーオブジェクト:", error)
+
+      if (error instanceof Error) {
+        console.error("エラーメッセージ:", error.message)
+        console.error("エラーネーム:", error.name)
+        if (error.stack) {
+          console.error("エラースタックトレース:")
+          console.error(error.stack)
+        }
+      }
+
+      if (typeof error === "object" && error !== null) {
+        try {
+          const errorDetails = JSON.stringify(error, Object.getOwnPropertyNames(error), 2)
+          console.error("エラーオブジェクト詳細:")
+          console.error(errorDetails)
+        } catch (stringifyError) {
+          console.error("エラーオブジェクトの文字列化に失敗:", stringifyError)
+        }
+      }
+
+      // ユーザーに分かりやすいメッセージを表示
+      const errorMessage =
+        error instanceof Error ? error.message : "不明なエラーが発生しました"
+      alert(
+        `PDFの生成に失敗しました。\n\n` +
+          `エラー: ${errorMessage}\n\n` +
+          `詳細はブラウザの開発者ツール（F12キー）のコンソールタブを確認してください。\n\n` +
+          `ページを再読み込みして、もう一度お試しください。`
+      )
     } finally {
       setIsGenerating(false)
     }
