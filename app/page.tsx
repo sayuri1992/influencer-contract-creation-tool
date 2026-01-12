@@ -88,7 +88,7 @@ export default function HomePage() {
             </div>
             <div>
               <h1 className="text-xl font-bold">業務委託書作成ツール</h1>
-              <p className="text-sm text-muted-foreground">フォームに入力してPDFを作成</p>
+              <p className="text-sm text-muted-foreground">株式会社OFFSTYLE 社内ツール</p>
             </div>
           </div>
         </div>
