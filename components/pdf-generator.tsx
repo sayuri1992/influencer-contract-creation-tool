@@ -43,23 +43,34 @@ export function PdfGenerator({ data }: PdfGeneratorProps) {
     return calculateScaleFromDimensions(previewWidth, previewHeight)
   }
 
-  // 幅と高さからスケールを計算
+  // 幅と高さからスケールを計算（2軸スケーリング）
   const calculateScaleFromDimensions = (width: number, height: number) => {
-    // 利用可能な画面サイズ（パディング、マージン、閉じるボタンなどを考慮）
+    // 利用可能な画面サイズ（viewport heightの90%を使用）
     const padding = 32 // 左右のパディング
     const topPadding = 80 // 上部のパディング（閉じるボタン用）
-    const bottomPadding = 32 // 下部のパディング（余裕を持たせる）
+    const bottomPadding = 40 // 下部のパディング（署名欄が見切れないように余裕を持たせる）
     
+    // 画面の90%を最大高さとして使用
+    const maxViewportHeight = window.innerHeight * 0.9
     const availableWidth = window.innerWidth - padding * 2
-    const availableHeight = window.innerHeight - topPadding - bottomPadding
+    const availableHeight = maxViewportHeight - topPadding - bottomPadding
 
     // 幅と高さの両方に収まるスケールを計算
     const scaleX = availableWidth / width
     const scaleY = availableHeight / height
 
     // 小さい方のスケールを使用（全体が確実に収まるように）
-    // さらに0.95を掛けて、少し余裕を持たせる
-    const calculatedScale = Math.min(scaleX, scaleY, 1) * 0.95
+    // さらに0.98を掛けて、少し余裕を持たせる（署名欄が見切れないように）
+    const calculatedScale = Math.min(scaleX, scaleY, 1) * 0.98
+
+    // デバッグ用ログ
+    console.log("スケール計算:", {
+      previewSize: { width, height },
+      availableSize: { width: availableWidth, height: availableHeight },
+      scaleX,
+      scaleY,
+      finalScale: calculatedScale,
+    })
 
     return Math.max(calculatedScale, 0.1) // 最小0.1
   }
@@ -69,11 +80,20 @@ export function PdfGenerator({ data }: PdfGeneratorProps) {
     if (!isExpanded) return
 
     const updateScale = () => {
-      setScale(calculateScale())
+      // 少し待ってから計算（レンダリング完了を待つ）
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const newScale = calculateScale()
+          setScale(newScale)
+          console.log("スケール更新:", newScale)
+        }, 50)
+      })
     }
 
-    // 初回計算
+    // 初回計算（複数回試行して確実に取得）
     updateScale()
+    setTimeout(updateScale, 100)
+    setTimeout(updateScale, 200)
 
     // リサイズイベントリスナー
     window.addEventListener("resize", updateScale)
@@ -369,41 +389,47 @@ export function PdfGenerator({ data }: PdfGeneratorProps) {
 
       {isExpanded && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center overflow-hidden"
+          className="fixed inset-0 bg-black/80 z-50 flex items-start justify-center overflow-hidden"
           onClick={() => setIsExpanded(false)}
           style={{
             padding: "16px",
+            maxHeight: "100vh",
+            overflow: "hidden",
           }}
         >
           <div
-            className="relative flex items-center justify-center"
+            className="relative flex items-start justify-center"
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",
               height: "100%",
               maxWidth: "100vw",
-              maxHeight: "100vh",
+              maxHeight: "90vh",
+              overflow: "hidden",
+              paddingTop: "60px", // 閉じるボタンのスペース
+              paddingBottom: "20px", // 下部の余白
             }}
           >
             <Button
               variant="secondary"
               size="icon"
-              className="absolute top-0 right-0 z-10 m-2"
+              className="absolute top-2 right-2 z-10"
               onClick={() => setIsExpanded(false)}
             >
               <X className="h-5 w-5" />
             </Button>
             <div
               ref={expandedPreviewRef}
-              className="bg-white rounded-lg shadow-2xl overflow-hidden"
+              className="bg-white rounded-lg shadow-2xl"
               style={{
                 width: "420mm",
                 height: "297mm",
                 minWidth: "420mm",
                 minHeight: "297mm",
                 transform: `scale(${scale})`,
-                transformOrigin: "center center",
-                margin: "auto",
+                transformOrigin: "center top",
+                margin: "0 auto",
+                overflow: "visible",
               }}
             >
               <ContractPreview data={data} />
