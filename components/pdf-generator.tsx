@@ -3,7 +3,7 @@
 import type { ContractData } from "@/lib/contract-types"
 import { Button } from "@/components/ui/button"
 import { Download, ZoomIn, X } from "lucide-react"
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import { ContractPreview } from "./contract-preview"
 import { toCanvas } from "html-to-image"
 import jsPDF from "jspdf"
@@ -14,8 +14,78 @@ interface PdfGeneratorProps {
 
 export function PdfGenerator({ data }: PdfGeneratorProps) {
   const previewRef = useRef<HTMLDivElement>(null)
+  const expandedPreviewRef = useRef<HTMLDivElement>(null)
   const [isExpanded, setIsExpanded] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [scale, setScale] = useState(1)
+
+  // 画面サイズに合わせてスケールを計算
+  const calculateScale = () => {
+    if (typeof window === "undefined" || !expandedPreviewRef.current) return 1
+
+    const previewElement = expandedPreviewRef.current
+    const previewWidth = previewElement.offsetWidth || previewElement.scrollWidth
+    const previewHeight = previewElement.offsetHeight || previewElement.scrollHeight
+
+    if (previewWidth === 0 || previewHeight === 0) {
+      // 要素サイズが取得できない場合、mm単位から計算
+      // 420mm = 1587.4px at 96dpi, 297mm = 1122.5px at 96dpi
+      const mmToPx = 96 / 25.4 // 1mm = 3.779527559px at 96dpi
+      const calculatedWidth = 420 * mmToPx
+      const calculatedHeight = 297 * mmToPx
+      return calculateScaleFromDimensions(calculatedWidth, calculatedHeight)
+    }
+
+    return calculateScaleFromDimensions(previewWidth, previewHeight)
+  }
+
+  // 幅と高さからスケールを計算
+  const calculateScaleFromDimensions = (width: number, height: number) => {
+    // 利用可能な画面サイズ（パディングとマージンを考慮）
+    const availableWidth = window.innerWidth - 64 // 左右32pxずつ
+    const availableHeight = window.innerHeight - 64 // 上下32pxずつ
+
+    // 幅と高さの両方に収まるスケールを計算
+    const scaleX = availableWidth / width
+    const scaleY = availableHeight / height
+
+    // 小さい方のスケールを使用（全体が収まるように）
+    const calculatedScale = Math.min(scaleX, scaleY, 1) // 1を超えないように
+
+    return Math.max(calculatedScale, 0.1) // 最小0.1
+  }
+
+  // 画面サイズ変更時にスケールを再計算
+  useEffect(() => {
+    if (!isExpanded) return
+
+    const updateScale = () => {
+      setScale(calculateScale())
+    }
+
+    // 初回計算
+    updateScale()
+
+    // リサイズイベントリスナー
+    window.addEventListener("resize", updateScale)
+    window.addEventListener("orientationchange", updateScale)
+
+    return () => {
+      window.removeEventListener("resize", updateScale)
+      window.removeEventListener("orientationchange", updateScale)
+    }
+  }, [isExpanded])
+
+  // 拡大表示を開く時にスケールを計算
+  const handleExpand = () => {
+    setIsExpanded(true)
+    // DOM更新後にスケールを計算
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        setScale(calculateScale())
+      }, 50) // 少し待ってから計算（レンダリング完了を待つ）
+    })
+  }
 
   const handleDownload = async () => {
     try {
@@ -263,7 +333,7 @@ export function PdfGenerator({ data }: PdfGeneratorProps) {
             width: `calc(420mm * 0.35)`,
             height: `calc(297mm * 0.35)`,
           }}
-          onClick={() => setIsExpanded(true)}
+          onClick={handleExpand}
         >
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center z-10">
             <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-primary text-primary-foreground px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg">
@@ -286,19 +356,35 @@ export function PdfGenerator({ data }: PdfGeneratorProps) {
 
       {isExpanded && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-start justify-center overflow-auto p-4"
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center overflow-hidden p-4"
           onClick={() => setIsExpanded(false)}
         >
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "420mm",
+              height: "297mm",
+              transform: `scale(${scale})`,
+              transformOrigin: "center center",
+            }}
+          >
             <Button
               variant="secondary"
               size="icon"
-              className="absolute top-2 right-2 z-10"
+              className="absolute -top-12 right-0 z-10"
               onClick={() => setIsExpanded(false)}
             >
               <X className="h-5 w-5" />
             </Button>
-            <div className="bg-white rounded-lg shadow-2xl overflow-auto max-h-[90vh]">
+            <div
+              ref={expandedPreviewRef}
+              className="bg-white rounded-lg shadow-2xl overflow-hidden"
+              style={{
+                width: "100%",
+                height: "100%",
+              }}
+            >
               <ContractPreview data={data} />
             </div>
           </div>
